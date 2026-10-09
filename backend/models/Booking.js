@@ -38,6 +38,11 @@ bookingSchema.index({
   travelDate: 1,
   departureTime: 1,
   seatNumber: 1
-}, { unique: true });
+}, {
+  unique: true,
+  partialFilterExpression: {
+    status: { $in: ["pending", "confirmed", "completed"] }
+  }
+});
 
 module.exports = mongoose.model("Booking", bookingSchema);

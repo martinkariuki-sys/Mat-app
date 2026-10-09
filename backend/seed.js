@@ -22,11 +22,11 @@ async function seed() {
     role: "admin"
   });
 
-  const conductor = await User.create({
-    name: "John Conductor",
+  const driver = await User.create({
+    name: "John Driver",
     phone: "0711111111",
     password,
-    role: "conductor"
+    role: "driver"
   });
 
   await User.create({
@@ -56,7 +56,7 @@ async function seed() {
     capacity: 14,
     route: route1._id,
     driverName: "Peter Driver",
-    conductor: conductor._id,
+    conductor: driver._id,
     departureTimes: ["07:00", "10:00", "14:00", "17:00"]
   });
 
@@ -66,13 +66,13 @@ async function seed() {
     capacity: 14,
     route: route2._id,
     driverName: "James Driver",
-    conductor: conductor._id,
+    conductor: driver._id,
     departureTimes: ["06:30", "09:00", "13:00", "18:00"]
   });
 
   console.log("Seed complete.");
   console.log("Admin: 0700000000 / 123456");
-  console.log("Conductor: 0711111111 / 123456");
+  console.log("Driver: 0711111111 / 123456");
   console.log("Passenger: 0722222222 / 123456");
   console.log("Admin id:", admin._id.toString());
 

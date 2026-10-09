@@ -12,9 +12,9 @@ router.use(protect, authorize("admin"));
 
 router.get("/dashboard", async (req, res, next) => {
   try {
-    const [passengers, conductors, matatus, routes, bookings] = await Promise.all([
+    const [passengers, drivers, matatus, routes, bookings] = await Promise.all([
       User.countDocuments({ role: "passenger" }),
-      User.countDocuments({ role: "conductor" }),
+      User.countDocuments({ role: { $in: ["driver", "conductor"] } }),
       Matatu.countDocuments({ active: true }),
       Route.countDocuments({ active: true }),
       Booking.countDocuments()
@@ -29,7 +29,7 @@ router.get("/dashboard", async (req, res, next) => {
       success: true,
       stats: {
         passengers,
-        conductors,
+        drivers,
         matatus,
         routes,
         bookings,
@@ -113,7 +113,7 @@ router.post("/matatus", async (req, res, next) => {
   }
 });
 
-router.post("/conductors", async (req, res, next) => {
+router.post("/drivers", async (req, res, next) => {
   try {
     const { name, phone, password } = req.body;
 
@@ -125,21 +125,32 @@ router.post("/conductors", async (req, res, next) => {
       });
     }
 
-    const conductor = await User.create({
+    const driver = await User.create({
       name,
       phone,
       password: await bcrypt.hash(password, 10),
-      role: "conductor"
+      role: "driver"
     });
 
     res.status(201).json({
       success: true,
-      conductor: {
-        id: conductor._id,
-        name: conductor.name,
-        phone: conductor.phone,
-        role: conductor.role
+      driver: {
+        id: driver._id,
+        name: driver.name,
+        phone: driver.phone,
+        role: driver.role
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/conductors", async (req, res, next) => {
+  try {
+    return res.status(400).json({
+      success: false,
+      message: "Use /api/admin/drivers for driver accounts."
     });
   } catch (error) {
     next(error);

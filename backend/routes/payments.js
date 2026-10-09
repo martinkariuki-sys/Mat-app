@@ -1,14 +1,24 @@
 const express = require("express");
+const crypto = require("crypto");
 const Payment = require("../models/Payment");
 const Booking = require("../models/Booking");
 const { protect } = require("../middleware/auth");
-const { stkPush } = require("../services/mpesa");
+const rateLimit = require("express-rate-limit");
+const { stkPush, formatPhone } = require("../services/mpesa");
 
 const router = express.Router();
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Too many payment requests. Try again later." }
+});
 
-router.post("/stkpush", protect, async (req, res, next) => {
+router.post("/stkpush", paymentLimiter, protect, async (req, res, next) => {
   try {
     const { bookingId, phone } = req.body;
+    const normalizedPhone = formatPhone(phone);
 
     const booking = await Booking.findById(bookingId);
 
@@ -28,13 +38,13 @@ router.post("/stkpush", protect, async (req, res, next) => {
 
     const payment = await Payment.create({
       booking: booking._id,
-      phone,
+      phone: normalizedPhone,
       amount: booking.amount,
       status: "pending"
     });
 
     const result = await stkPush({
-      phone,
+      phone: normalizedPhone,
       amount: booking.amount,
       accountReference: booking.bookingCode,
       description: "Mat App seat booking"
@@ -67,8 +77,20 @@ router.post("/stkpush", protect, async (req, res, next) => {
   }
 });
 
-router.post("/callback", async (req, res) => {
+router.post("/callback/:token", async (req, res) => {
   try {
+    const expectedToken = process.env.MPESA_CALLBACK_TOKEN || "";
+    const suppliedToken = req.params.token || "";
+    const expectedBuffer = Buffer.from(expectedToken);
+    const suppliedBuffer = Buffer.from(suppliedToken);
+    if (
+      expectedBuffer.length === 0 ||
+      expectedBuffer.length !== suppliedBuffer.length ||
+      !crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)
+    ) {
+      return res.status(404).json({ ResultCode: 1, ResultDesc: "Not found" });
+    }
+
     const body = req.body?.Body?.stkCallback;
 
     if (!body) {
@@ -83,23 +105,50 @@ router.post("/callback", async (req, res) => {
       return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
     }
 
+    if (payment.status !== "pending") {
+      return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+    }
+
+    if (payment.merchantRequestId && body.MerchantRequestID !== payment.merchantRequestId) {
+      return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+    }
+
     payment.rawResponse = req.body;
 
     if (body.ResultCode === 0) {
       const items = body.CallbackMetadata?.Item || [];
       const receipt = items.find(i => i.Name === "MpesaReceiptNumber");
+      const paidAmount = items.find(i => i.Name === "Amount");
+      const paidPhone = items.find(i => i.Name === "PhoneNumber");
+      const amountMatches = Number(paidAmount?.Value) === Number(payment.amount);
+      const phoneMatches = paidPhone && String(paidPhone.Value) === payment.phone;
+
+      if (!receipt?.Value || !amountMatches || !phoneMatches) {
+        payment.status = "failed";
+        await payment.save();
+        await Booking.findOneAndUpdate(
+          { _id: payment.booking, status: "pending" },
+          { status: "cancelled" }
+        );
+        return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+      }
 
       payment.status = "success";
-      payment.mpesaReceipt = receipt?.Value || "";
+      payment.mpesaReceipt = String(receipt.Value);
 
       await payment.save();
 
-      await Booking.findByIdAndUpdate(payment.booking, {
-        status: "confirmed"
-      });
+      await Booking.findOneAndUpdate(
+        { _id: payment.booking, status: "pending" },
+        { status: "confirmed" }
+      );
     } else {
       payment.status = "failed";
       await payment.save();
+      await Booking.findOneAndUpdate(
+        { _id: payment.booking, status: "pending" },
+        { status: "cancelled" }
+      );
     }
 
     return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
@@ -111,6 +160,14 @@ router.post("/callback", async (req, res) => {
 
 router.get("/:bookingId", protect, async (req, res, next) => {
   try {
+    const booking = await Booking.findById(req.params.bookingId);
+    if (!booking || (
+      req.user.role !== "admin" &&
+      booking.passenger.toString() !== req.user._id.toString()
+    )) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
     const payment = await Payment.findOne({ booking: req.params.bookingId })
       .sort({ createdAt: -1 });
 

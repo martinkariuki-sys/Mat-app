@@ -1,12 +1,32 @@
 const axios = require("axios");
 
 function formatPhone(phone) {
-  let value = String(phone).replace(/\s+/g, "");
+  let value = String(phone || "").replace(/[^\d+]/g, "");
   if (value.startsWith("+254")) return value.substring(1);
-  if (value.startsWith("254")) return value;
-  if (value.startsWith("07")) return "254" + value.substring(1);
-  if (value.startsWith("01")) return "254" + value.substring(1);
+  if (value.startsWith("07") || value.startsWith("01")) {
+    value = "254" + value.substring(1);
+  }
+  if (!/^254[17]\d{8}$/.test(value)) {
+    const error = new Error("Enter a valid Kenyan M-Pesa phone number");
+    error.status = 400;
+    throw error;
+  }
   return value;
+}
+
+function darajaTimestamp(date = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date).map(part => [part.type, part.value]));
+
+  return `${parts.year}${parts.month}${parts.day}${parts.hour}${parts.minute}${parts.second}`;
 }
 
 async function getAccessToken() {
@@ -23,7 +43,8 @@ async function getAccessToken() {
     {
       headers: {
         Authorization: `Basic ${credentials}`
-      }
+      },
+      timeout: 15000
     }
   );
 
@@ -41,10 +62,7 @@ async function stkPush({ phone, amount, accountReference, description }) {
 
   const { token, base } = await getAccessToken();
 
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[-:TZ.]/g, "")
-    .slice(0, 14);
+  const timestamp = darajaTimestamp();
 
   const password = Buffer.from(
     `${process.env.MPESA_SHORTCODE}${process.env.MPESA_PASSKEY}${timestamp}`
@@ -56,7 +74,7 @@ async function stkPush({ phone, amount, accountReference, description }) {
       BusinessShortCode: process.env.MPESA_SHORTCODE,
       Password: password,
       Timestamp: timestamp,
-      TransactionType: "CustomerPayBillOnline",
+      TransactionType: process.env.MPESA_TRANSACTION_TYPE || "CustomerPayBillOnline",
       Amount: Math.round(amount),
       PartyA: formatPhone(phone),
       PartyB: process.env.MPESA_SHORTCODE,
@@ -69,11 +87,12 @@ async function stkPush({ phone, amount, accountReference, description }) {
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json"
-      }
+      },
+      timeout: 15000
     }
   );
 
   return response.data;
 }
 
-module.exports = { stkPush };
+module.exports = { stkPush, formatPhone, darajaTimestamp };

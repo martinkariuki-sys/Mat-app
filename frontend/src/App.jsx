@@ -19,6 +19,7 @@ export default function App() {
   const [page, setPage] = useState("home");
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
+  const effectiveRole = user?.role === "conductor" ? "driver" : user?.role;
 
   useEffect(() => {
     const saved = localStorage.getItem("matapp_user");
@@ -43,7 +44,9 @@ export default function App() {
     localStorage.setItem("matapp_token", data.token);
     localStorage.setItem("matapp_user", JSON.stringify(data.user));
     setUser(data.user);
-    setPage(data.user.role === "passenger" ? "home" : "dashboard");
+    const continueBooking = sessionStorage.getItem("matapp_continue_booking") === "true";
+    sessionStorage.removeItem("matapp_continue_booking");
+    setPage(data.user.role === "passenger" ? (continueBooking ? "book" : "home") : "dashboard");
   }
 
   function logout() {
@@ -60,12 +63,13 @@ export default function App() {
       <Header user={user} page={page} setPage={setPage} logout={logout} />
       <main>
         {page === "home" && <Home user={user} setPage={setPage} notify={notify} />}
+        {page === "guide" && <UserGuide setPage={setPage} />}
         {page === "login" && <Login onSuccess={loginSuccess} setPage={setPage} notify={notify} />}
         {page === "register" && <Register onSuccess={loginSuccess} setPage={setPage} notify={notify} />}
-        {page === "book" && user?.role === "passenger" && <BookingPage notify={notify} />}
-        {page === "my-bookings" && user?.role === "passenger" && <MyBookings notify={notify} />}
-        {page === "dashboard" && user?.role === "conductor" && <ConductorDashboard notify={notify} />}
-        {page === "dashboard" && user?.role === "admin" && <AdminDashboard notify={notify} />}
+        {page === "book" && effectiveRole === "passenger" && <BookingPage notify={notify} />}
+        {page === "my-bookings" && effectiveRole === "passenger" && <MyBookings notify={notify} />}
+        {page === "dashboard" && (effectiveRole === "driver" || effectiveRole === "conductor") && <DriverDashboard notify={notify} />}
+        {page === "dashboard" && effectiveRole === "admin" && <AdminDashboard notify={notify} />}
         {page === "dashboard" && !user && <Login onSuccess={loginSuccess} setPage={setPage} notify={notify} />}
       </main>
       <footer>
@@ -84,6 +88,7 @@ export default function App() {
 
 function Header({ user, page, setPage, logout }) {
   const [open, setOpen] = useState(false);
+  const effectiveRole = user?.role === "conductor" ? "driver" : user?.role;
   const navigate = next => {
     setPage(next);
     setOpen(false);
@@ -97,11 +102,12 @@ function Header({ user, page, setPage, logout }) {
       </button>
       <nav className={open ? "nav open" : "nav"}>
         <button className={page === "home" ? "active" : ""} onClick={() => navigate("home")}>Home</button>
-        {user?.role === "passenger" && <>
+        <button className={page === "guide" ? "active" : ""} onClick={() => navigate("guide")}>User guide</button>
+        {effectiveRole === "passenger" && <>
           <button onClick={() => navigate("book")}>Book a Matatu</button>
           <button onClick={() => navigate("my-bookings")}>My Bookings</button>
         </>}
-        {user && user.role !== "passenger" && <button onClick={() => navigate("dashboard")}>Dashboard</button>}
+        {user && effectiveRole !== "passenger" && <button onClick={() => navigate("dashboard")}>Dashboard</button>}
         {!user ? <>
           <button onClick={() => navigate("login")}>Login</button>
           <button className="nav-cta" onClick={() => navigate("register")}>Create account</button>
@@ -120,16 +126,14 @@ function Home({ user, setPage, notify }) {
   const [date, setDate] = useState(today());
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
 
   async function search() {
-    if (!user) {
-      setPage("login");
-      return;
-    }
     setSearching(true);
     try {
       const response = await api.get("/matatus", { params: { origin, destination, date } });
       setResults(response.data.matatus);
+      setSearched(true);
       notify(`${response.data.matatus.length} matatu(s) found`);
     } catch (error) {
       notify(error.response?.data?.message || "Could not search", "error");
@@ -143,7 +147,7 @@ function Home({ user, setPage, notify }) {
       <div className="hero-copy">
         <div className="eyebrow"><ShieldCheck size={16} /> BUILT FOR KENYAN TRANSPORT</div>
         <h1>Move through Kenya without the <span>guesswork.</span></h1>
-        <p>Find a matatu, choose your route, reserve your seat and pay through M-Pesa. One system for passengers, conductors and Saccos.</p>
+        <p>Find a matatu, choose your route, reserve your seat and pay through M-Pesa. One system for passengers, drivers and Saccos.</p>
         <div className="hero-actions">
           <button className="primary-btn" onClick={() => user ? setPage("book") : setPage("register")}>Book a seat <ChevronRight size={18} /></button>
           <button className="ghost-btn" onClick={() => document.getElementById("how")?.scrollIntoView({ behavior: "smooth" })}>How it works</button>
@@ -159,9 +163,11 @@ function Home({ user, setPage, notify }) {
       </div>
     </section>
 
-    {results.length > 0 && <section className="section">
-      <div className="section-head"><div><div className="eyebrow">AVAILABLE NOW</div><h2>Your matching matatus</h2></div></div>
-      <div className="matatu-grid">{results.map(m => <MatatuCard key={m._id} matatu={m} date={date} setPage={setPage} />)}</div>
+    {searched && <section className="section">
+      <div className="section-head"><div><div className="eyebrow">TRIP SEARCH</div><h2>Your matching matatus</h2></div></div>
+      {results.length > 0
+        ? <div className="matatu-grid">{results.map(m => <MatatuCard key={m._id} matatu={m} date={date} setPage={setPage} user={user} />)}</div>
+        : <div className="empty">No matatus found for this route and date. Try another destination or travel date.</div>}
     </section>}
 
     <section className="stats-strip">
@@ -172,18 +178,50 @@ function Home({ user, setPage, notify }) {
       <div className="eyebrow">THE SYSTEM</div><h2>One platform. Three sides of the journey.</h2>
       <div className="role-grid">
         <RoleCard icon={<Ticket />} title="Passenger" text="Search routes, see available seats, book, pay and keep your digital ticket." />
-        <RoleCard icon={<Users />} title="Conductor" text="See today's passengers, verify confirmed bookings and mark people as boarded." />
-        <RoleCard icon={<LayoutDashboard />} title="Sacco Admin" text="Manage routes, fares, vehicles, conductors and system activity." />
+        <RoleCard icon={<Users />} title="Driver" text="See today's passengers, verify confirmed bookings and mark people as boarded." />
+        <RoleCard icon={<LayoutDashboard />} title="Sacco Admin" text="Manage routes, fares, vehicles, drivers and system activity." />
       </div>
     </section>
   </>;
+}
+
+function UserGuide({ setPage }) {
+  return <section className="section guide-page">
+    <div className="eyebrow">MAT APP FIELD GUIDE</div>
+    <h1>How to use Mat App</h1>
+    <p className="guide-intro">A quick guide for passengers, drivers and Sacco administrators.</p>
+    <div className="guide-notice"><ShieldCheck size={21} /><div><strong>Demo payments do not move money.</strong><span>In DEMO mode, checkout confirms the booking without sending an M-Pesa request. Real payments require Safaricom Daraja credentials and a reachable callback URL.</span></div></div>
+    <div className="guide-grid">
+      <article className="panel">
+        <div className="eyebrow">01 · PASSENGER</div><h2>Book a seat</h2>
+        <ol><li>Search by origin, destination and travel date. You can browse before signing in.</li><li>Select a vehicle and departure time. Sign in or create a passenger account to continue.</li><li>Choose an available seat, enter the M-Pesa phone number and book.</li><li>Find the booking code, status and trip details under My Bookings.</li></ol>
+        <button className="ghost-btn" onClick={() => setPage("home")}>Find a trip</button>
+      </article>
+      <article className="panel">
+        <div className="eyebrow">02 · DRIVER</div><h2>Manage boarding</h2>
+        <ol><li>Sign in with a driver account to open the dashboard.</li><li>Check the passenger name, route, departure, seat and payment status.</li><li>Mark a passenger as boarded only after confirming their trip.</li><li>Only confirmed bookings can be marked as boarded.</li></ol>
+        <button className="ghost-btn" onClick={() => setPage("login")}>Driver login</button>
+      </article>
+      <article className="panel">
+        <div className="eyebrow">03 · SACCO ADMIN</div><h2>Set up the fleet</h2>
+        <ol><li>Create routes with an origin, destination and fare.</li><li>Add each matatu, assign its route, capacity and departure times.</li><li>Review fleet, account counts, bookings and recorded revenue in Overview.</li><li>Use real Daraja credentials only in a secured deployment.</li></ol>
+        <button className="ghost-btn" onClick={() => setPage("login")}>Admin login</button>
+      </article>
+    </div>
+    <div className="panel guide-accounts">
+      <h2>Local demo accounts</h2>
+      <p>Available after the backend demo seed is run. Password for each account: <strong>123456</strong>.</p>
+      <div className="guide-account-row"><strong>Passenger</strong><span>0722222222</span><strong>Driver</strong><span>0711111111</span><strong>Admin</strong><span>0700000000</span></div>
+      <p className="muted">These shared credentials are for local testing only. Replace them and configure private credentials before deployment.</p>
+    </div>
+  </section>;
 }
 
 function RoleCard({ icon, title, text }) {
   return <div className="role-card"><div className="role-icon">{icon}</div><h3>{title}</h3><p>{text}</p></div>;
 }
 
-function MatatuCard({ matatu, date, setPage }) {
+function MatatuCard({ matatu, date, setPage, user }) {
   const [time, setTime] = useState(matatu.departureTimes?.[0] || "");
   return <div className="matatu-card">
     <div className="matatu-top"><div className="matatu-logo"><BusFront /></div><div><strong>{matatu.registration}</strong><span>{matatu.sacco}</span></div><span className="available">{matatu.availableSeats} seats</span></div>
@@ -192,7 +230,11 @@ function MatatuCard({ matatu, date, setPage }) {
     <select aria-label="Departure time" value={time} onChange={e => setTime(e.target.value)}>{matatu.departureTimes?.map(t => <option key={t}>{t}</option>)}</select>
     <button className="primary-btn full" onClick={() => {
       localStorage.setItem("matapp_selected_matatu", JSON.stringify({ ...matatu, selectedDate: date, selectedTime: time }));
-      setPage("book");
+      if (user) setPage("book");
+      else {
+        sessionStorage.setItem("matapp_continue_booking", "true");
+        setPage("login");
+      }
     }}>Select vehicle <ChevronRight size={17} /></button>
   </div>;
 }
@@ -368,11 +410,11 @@ function MyBookings({ notify }) {
   </div></section>;
 }
 
-function ConductorDashboard({ notify }) {
+function DriverDashboard({ notify }) {
   const [bookings, setBookings] = useState([]);
   async function load() {
     try { const { data } = await api.get("/conductor/bookings"); setBookings(data.bookings); }
-    catch (error) { notify(error.response?.data?.message || "Could not load conductor data", "error"); }
+    catch (error) { notify(error.response?.data?.message || "Could not load driver data", "error"); }
   }
   useEffect(() => { load(); }, []);
 
@@ -381,7 +423,7 @@ function ConductorDashboard({ notify }) {
     catch (error) { notify(error.response?.data?.message || "Could not update boarding", "error"); }
   }
 
-  return <section className="section"><div className="eyebrow">CONDUCTOR CONTROL</div><h1>Today's passenger manifest</h1><div className="table-wrap">
+  return <section className="section"><div className="eyebrow">DRIVER CONTROL</div><h1>Today's passenger manifest</h1><div className="table-wrap">
     <table><thead><tr><th>Passenger</th><th>Trip</th><th>Seat</th><th>Payment</th><th>Boarding</th></tr></thead><tbody>
       {bookings.map(b => <tr key={b._id}>
         <td><strong>{b.passenger?.name}</strong><small>{b.passenger?.phone}</small></td>
@@ -429,10 +471,10 @@ function AdminDashboard({ notify }) {
 
   return <section className="section admin-page">
     <div className="eyebrow">SACCO ADMINISTRATION</div><h1>Control centre</h1>
-    <div className="metric-grid"><Metric label="Passengers" value={stats.passengers} icon={<Users />} /><Metric label="Conductors" value={stats.conductors} icon={<Users />} /><Metric label="Active matatus" value={stats.matatus} icon={<BusFront />} /><Metric label="Bookings" value={stats.bookings} icon={<Ticket />} /><Metric label="Revenue" value={money(stats.revenue)} icon={<CreditCard />} /></div>
+    <div className="metric-grid"><Metric label="Passengers" value={stats.passengers} icon={<Users />} /><Metric label="Drivers" value={stats.drivers} icon={<Users />} /><Metric label="Active matatus" value={stats.matatus} icon={<BusFront />} /><Metric label="Bookings" value={stats.bookings} icon={<Ticket />} /><Metric label="Revenue" value={money(stats.revenue)} icon={<CreditCard />} /></div>
     <div className="tabs"><button className={tab === "overview" ? "selected-tab" : ""} onClick={() => setTab("overview")}>Overview</button><button className={tab === "routes" ? "selected-tab" : ""} onClick={() => setTab("routes")}>Routes</button><button className={tab === "matatus" ? "selected-tab" : ""} onClick={() => setTab("matatus")}>Matatus</button></div>
     {tab === "overview" && <div className="admin-overview">
-      <div className="panel"><h3>What the admin controls</h3><ul className="feature-list"><li>Passenger accounts and conductor accounts</li><li>Routes and fares</li><li>Matatu registration, capacity and departure times</li><li>Booking and payment records</li><li>Revenue visibility</li></ul></div>
+      <div className="panel"><h3>What the admin controls</h3><ul className="feature-list"><li>Passenger accounts and driver accounts</li><li>Routes and fares</li><li>Matatu registration, capacity and departure times</li><li>Booking and payment records</li><li>Revenue visibility</li></ul></div>
       <div className="panel"><h3>Live fleet</h3>{matatus.slice(0, 5).map(m => <div className="mini-row" key={m._id}><span><strong>{m.registration}</strong> · {m.route?.name}</span><span>{m.capacity} seats</span></div>)}</div>
     </div>}
     {tab === "routes" && <div className="admin-grid">

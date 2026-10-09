@@ -5,13 +5,13 @@ const { protect, authorize } = require("../middleware/auth");
 
 const router = express.Router();
 
-router.use(protect, authorize("conductor", "admin"));
+router.use(protect, authorize("driver", "conductor", "admin"));
 
 router.get("/bookings", async (req, res, next) => {
   try {
     const filter = {};
 
-    if (req.user.role === "conductor") {
+    if (req.user.role === "driver" || req.user.role === "conductor") {
       const matatus = await Matatu.find({ conductor: req.user._id }).select("_id");
       filter.matatu = { $in: matatus.map(m => m._id) };
     }

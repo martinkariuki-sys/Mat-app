@@ -78,6 +78,12 @@ router.post("/", protect, async (req, res, next) => {
       booking: populated
     });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "That seat has already been booked"
+      });
+    }
     next(error);
   }
 });

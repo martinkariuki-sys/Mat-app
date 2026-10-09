@@ -209,6 +209,20 @@ input:focus, select:focus { border-color: var(--green); box-shadow: 0 0 0 3px rg
 .tabs button { border: 1px solid var(--line); background: white; padding: 10px 15px; border-radius: 8px; }
 .tabs button.selected-tab { background: var(--green); color: white; border-color: var(--green); }
 .admin-overview, .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.guide-intro { color: var(--muted); font-size: 16px; margin: -8px 0 24px; }
+.guide-notice { display: flex; gap: 13px; align-items: flex-start; padding: 17px 19px; margin-bottom: 20px; background: var(--green-light); border-left: 4px solid var(--green); }
+.guide-notice svg { color: var(--green); flex: 0 0 auto; }
+.guide-notice strong, .guide-notice span { display: block; }
+.guide-notice span { color: var(--muted); line-height: 1.6; margin-top: 4px; }
+.guide-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.guide-grid .panel { box-shadow: none; border-radius: 8px; }
+.guide-grid h2, .guide-accounts h2 { font-size: 22px; margin: 0 0 12px; }
+.guide-grid ol { color: var(--muted); line-height: 1.65; padding-left: 20px; margin: 0 0 20px; }
+.guide-grid li { padding-left: 3px; margin-bottom: 8px; }
+.guide-accounts { margin-top: 20px; box-shadow: none; }
+.guide-accounts > p { color: var(--muted); line-height: 1.6; }
+.guide-account-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.guide-account-row span { color: var(--muted); }
 .feature-list { line-height: 2.2; color: var(--muted); }
 .mini-row, .fleet-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 14px 0; border-bottom: 1px solid var(--line); }
 .mini-row:last-child, .fleet-row:last-child { border-bottom: 0; }
@@ -233,6 +247,7 @@ footer strong { color: var(--green); }
   .hero { grid-template-columns: 1fr; gap: 35px; }
   .role-grid, .matatu-grid { grid-template-columns: 1fr 1fr; }
   .booking-layout, .admin-overview, .admin-grid { grid-template-columns: 1fr; }
+  .guide-grid { grid-template-columns: 1fr; }
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .summary-card { position: static; }
 }
@@ -250,6 +265,7 @@ footer strong { color: var(--green); }
   .stats-strip div { justify-content: flex-start; border: 0; }
   .role-grid, .matatu-grid { grid-template-columns: 1fr; }
   .two-col { grid-template-columns: 1fr; }
+  .guide-account-row { grid-template-columns: 1fr 1fr; }
   .booking-card { grid-template-columns: 1fr; }
   .metric-grid { grid-template-columns: 1fr 1fr; }
   .seat-map { grid-template-columns: repeat(3, 1fr); }
